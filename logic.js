@@ -6,7 +6,7 @@
     const unique = new Map();
     for (const record of records) {
       if (!record || typeof record !== 'object' || !Array.isArray(record.checked)) continue;
-      const service = services.find(s => s.id === record.id && s.id !== 'network');
+      const service = services.find(s => s.id === record.id && s.items.length > 0);
       if (!service) continue;
       const checked = [...new Set(record.checked.filter(i => Number.isInteger(i) && i >= 0 && i < service.items.length))].sort((a,b) => a-b);
       unique.set(service.id, {id:service.id, checked, savedAt:typeof record.savedAt === 'string' ? record.savedAt : ''});
@@ -16,7 +16,7 @@
 
   function searchServices(services, query, category='all') {
     const needle=String(query).trim().toLocaleLowerCase();
-    return services.filter(s => (category === 'all' || s.category === category) &&
+    return services.filter(s => (category === 'all' || s.category === category || (category === 'affairs' && ['academic','applications'].includes(s.category))) &&
       [s.title,s.description,s.label,...(s.aliases || [])].join(' ').toLocaleLowerCase().includes(needle));
   }
 
@@ -29,7 +29,11 @@
     catch { return false; }
   }
 
-  const api={sanitizeSaved,searchServices,hasSensitiveInput,writeSaved};
+  function hasRepairRisk(value) {
+    return /冒烟|火花|漏电|焦糊|燃烧|起火|电线裸露/.test(value);
+  }
+
+  const api={sanitizeSaved,searchServices,hasSensitiveInput,writeSaved,hasRepairRisk};
   if(typeof module !== 'undefined' && module.exports) module.exports=api;
   else root.CampusLogic=api;
 })(globalThis);

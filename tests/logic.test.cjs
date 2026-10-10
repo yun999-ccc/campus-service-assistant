@@ -28,6 +28,25 @@ test('服务搜索识别大小写不同的 WiFi 和常用别名',()=>{
 });
 test('搜索别名与类型筛选一起生效',()=>assert.deepEqual(ids(logic.searchServices(services,'wifi','affairs')),[]));
 test('未知搜索返回空列表',()=>assert.deepEqual(ids(logic.searchServices(services,'火星探测器')),[]));
+test('四个新服务能按需求分流，网络报修不误判设施报修',()=>{
+  assert.deepEqual(matches('我想开在读证明'),['proof']);
+  assert.deepEqual(matches('怎么申请病假'),['leave']);
+  assert.deepEqual(matches('宿舍水龙头漏水'),['repair']);
+  assert.deepEqual(matches('图书怎么续借'),['library']);
+  assert.deepEqual(matches('校园网报修'),['network']);
+});
+test('8项服务均分到四类，每类两项',()=>{
+  assert.equal(services.length,8);
+  for(const category of ['academic','applications','life','technical'])assert.equal(logic.searchServices(services,'',category).length,2);
+});
+test('原校园办事深链接仍能检索四项办事服务',()=>assert.equal(logic.searchServices(services,'','affairs').length,4));
+test('新事项清单可以保存，报修摘要不混入准备清单',()=>{
+  assert.deepEqual(ids(logic.sanitizeSaved([{id:'proof',checked:[0]},{id:'leave',checked:[1]},{id:'library',checked:[2]},{id:'repair',checked:[]}],services)),['proof','leave','library']);
+});
+test('设施报修识别明显安全风险，普通滴水不标记电气风险',()=>{
+  assert.equal(logic.hasRepairRisk('插座冒烟且有焦糊味'),true);
+  assert.equal(logic.hasRepairRisk('水龙头持续滴水'),false);
+});
 test('存储清理剔除越界索引和重复索引',()=>{
   const result=logic.sanitizeSaved([{id:'card',checked:[0,0,-1,99,'1',1.5,2]}],services);
   assert.deepEqual(result,[{id:'card',checked:[0,2],savedAt:''}]);

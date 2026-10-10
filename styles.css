@@ -29,3 +29,12 @@ dialog{border:1px solid var(--line);border-radius:22px;padding:26px;width:min(66
 @media(min-width:1500px){.welcome-photo{margin-right:12px}}
 @media(max-width:1000px){.welcome{grid-template-columns:minmax(0,1fr) 350px}.photo-frame img{height:232px}}
 @media(max-width:760px){.welcome{grid-template-columns:1fr;gap:18px;padding-bottom:25px}.welcome-photo{width:100%;margin:0}.photo-frame{padding:4px;border-radius:14px;transform:none;box-shadow:none}.photo-frame img{height:116px;border-radius:10px;object-position:50% 22%}.photo-sticker{left:10px;bottom:10px;font-size:9px;padding:7px 11px;transform:none}.photo-sticker span{font-size:17px}.photo-spark{font-size:34px;top:-17px;right:3px}.welcome-photo figcaption{padding:8px 2px 0;font-size:9px}.directory-photo{display:none}.directory-heading{display:block}.page-footer>span:last-child{text-align:left}}
+
+/* Expanded service directory and repair form. */
+.directory-count{display:inline-block;font-size:12px;font-weight:500;letter-spacing:0;vertical-align:middle;color:var(--campus-blue);background:var(--blue-wash);padding:6px 10px;border-radius:9px;margin-left:10px}
+.filters{flex-wrap:wrap}.filters button{white-space:nowrap}.directory-toolbar{align-items:flex-start}
+.diagnostic-form textarea{border:1px solid #d9e1e9;border-radius:9px;padding:11px;background:#fcfdff;min-height:96px;font-size:12px}
+.diagnostic-form .repair-urgent{display:flex;align-items:flex-start;gap:9px;background:var(--sun-wash);border-radius:10px;padding:12px;margin-top:16px;cursor:pointer;font-size:11px}
+.diagnostic-form .repair-urgent input{width:16px;min-height:16px;height:16px;margin:2px 0 0;accent-color:var(--campus-orange);flex-shrink:0}
+@media(max-width:1000px){.directory-toolbar{flex-direction:column;gap:14px}.directory-search{align-self:flex-end}.filters button{padding:8px 12px}}
+@media(max-width:760px){.filters{width:100%;gap:4px}.filters button{padding:8px 10px;font-size:11px}.directory-search{align-self:stretch}.directory-count{font-size:10px;margin-left:5px}.section-heading .text-link{font-size:10px}}
