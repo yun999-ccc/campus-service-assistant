@@ -52,7 +52,8 @@
           <div class="try-questions"><span>试着问问</span><button data-question="学生证丢了怎么补办？">学生证丢了怎么办</button><button data-question="我想申请助学金，需要准备什么？">助学金怎么申请</button><button data-question="宿舍校园网连不上怎么办？">校园网连不上</button></div>
           <div id="conversation" class="conversation" aria-live="polite"></div>
           <div id="assistant-empty" class="assistant-empty"><span class="empty-symbol" aria-hidden="true">↳</span><div><h3>不必先知道该找哪个部门</h3><p>告诉我你遇到的事，或者从下方常用服务开始。</p></div></div>
-          <div class="prototype-note"><span aria-hidden="true">ⓘ</span> 当前为网页交互演示，尚未接入 AI；校内流程与受理信息待核实。</div>
+          <div class="cloud-assistant"><div><strong>想继续和 AI 聊聊？</strong><p>校务通智能体已在 Coze 发布，可检索有来源的资料、追问情况并整理建议。</p></div><a class="primary-button" href="https://www.coze.cn/store/agent/7694916887939465251?bot_id=true" target="_blank" rel="noopener noreferrer">打开 AI 助手 ↗</a><p class="cloud-assistant-note">在 Coze 页面继续对话，可能需要登录；不要发送敏感信息。历史资料与校内现行要求须核实。</p></div>
+          <div class="prototype-note"><span aria-hidden="true">ⓘ</span> 上方输入框是本地导航演示；真实 AI 对话请点击“打开 AI 助手”。</div>
         </section>
 
         <aside class="journey-panel" aria-labelledby="journey-title">
@@ -73,7 +74,7 @@
   </main>
 
   <dialog id="service-dialog" aria-labelledby="dialog-title"><div class="dialog-top"><span id="dialog-category" class="category-label"></span><button class="icon-button" data-action="close-dialog" aria-label="关闭服务详情">×</button></div><div id="dialog-content"></div></dialog>
-  <dialog id="about-dialog" aria-labelledby="about-title"><div class="dialog-top"><span class="category-label">关于体验版</span><button class="icon-button" data-action="close-about" aria-label="关闭体验版说明">×</button></div><h2 id="about-title">先把校园里的事，串成一条路。</h2><p>这是校园办事与求助助手的网页原型。你可以体验8项服务的事项导航、材料勾选、网络排查、清单保存与设施报修摘要。</p><p>当前没有接入大模型、学校系统或正式知识库。办事示例不代表学校现行规定，费用、地点、时限与受理渠道不作虚构。</p><p>输入和清单仅在你的浏览器中处理。请勿输入密码、验证码、身份证号码或其他敏感信息。</p><button class="primary-button" data-action="close-about">开始体验</button></dialog>
+  <dialog id="about-dialog" aria-labelledby="about-title"><div class="dialog-top"><span class="category-label">关于体验版</span><button class="icon-button" data-action="close-about" aria-label="关闭体验版说明">×</button></div><h2 id="about-title">先把校园里的事，串成一条路。</h2><p>你可以体验8项服务的事项导航、清单保存、安全排查与报修摘要，也可点击首页“打开 AI 助手”进入已发布的 Coze 智能体。</p><p>AI 助手调用知识检索工作流，引用资料出处并标注历史效力。部分服务仍缺完整校方资料，不能代替学校审批、查询个人业务或提交报修；办事示例不代表现行规定。</p><p>本地导航和清单在浏览器处理；发送给 Coze 的问题由该平台处理，可能需要登录并受平台额度影响。请勿发送密码、验证码、身份证或其他敏感信息。</p><button class="primary-button" data-action="close-about">开始体验</button></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>

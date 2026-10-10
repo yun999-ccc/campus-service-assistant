@@ -38,3 +38,9 @@ dialog{border:1px solid var(--line);border-radius:22px;padding:26px;width:min(66
 .diagnostic-form .repair-urgent input{width:16px;min-height:16px;height:16px;margin:2px 0 0;accent-color:var(--campus-orange);flex-shrink:0}
 @media(max-width:1000px){.directory-toolbar{flex-direction:column;gap:14px}.directory-search{align-self:flex-end}.filters button{padding:8px 12px}}
 @media(max-width:760px){.filters{width:100%;gap:4px}.filters button{padding:8px 10px;font-size:11px}.directory-search{align-self:stretch}.directory-count{font-size:10px;margin-left:5px}.section-heading .text-link{font-size:10px}}
+.cloud-assistant { margin-top:20px; padding:18px; border:1px solid #b9d9fc; border-radius:18px; background:#edf6ff; display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
+.cloud-assistant > div { flex:1 1 220px; }
+.cloud-assistant strong { color:#254fa7; }
+.cloud-assistant p { margin:6px 0 0; font-size:13px; line-height:1.6; }
+.cloud-assistant a { text-decoration:none; white-space:nowrap; }
+.cloud-assistant .cloud-assistant-note { flex-basis:100%; color:#57667a; font-size:12px; }
