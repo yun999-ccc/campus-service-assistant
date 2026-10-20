@@ -12,3 +12,11 @@ test('credentials stage recommends official recovery path',()=>assert.ok(analyze
 test('unknown stage prompts clarification rather than assuming no click',()=>assert.ok(analyzeMail('账号问题').actions.join('').includes('先确认')));
 test('large input is rejected',()=>assert.equal(analyzeMail('a'.repeat(12001)).status,'too_long'));
 test('redaction removes common identifiers and URL query secrets',()=>{const r=redactMail('a@example.com 13800138000 密码：SECRET https://example.org/?token=PRIVATE');assert.ok(!r.includes('SECRET'));assert.ok(!r.includes('PRIVATE'));assert.ok(!r.includes('13800138000'));});
+test('Chinese safety warnings are not credential requests',()=>{for(const text of ['请不要提供密码，不要发送验证码。','我们的工作人员不会要求您提供密码。'])assert.ok(!analyzeMail(text).signals.some(x=>x.code==='credential'));});
+test('English safety reminders and password notices are not credential requests',()=>{for(const text of ['Never share your password.','Do not send your verification code.','Your password was updated yesterday.'])assert.notEqual(analyzeMail(text).status,'review_priority');});
+test('a warning does not hide a later actual request',()=>assert.ok(analyzeMail('不要回复陌生人，但请向我们提供验证码。').signals.some(x=>x.code==='credential')));
+test('English OTP request is captured',()=>assert.ok(analyzeMail('Please send us your OTP.').signals.some(x=>x.code==='credential')));
+test('a blank From header cannot consume the Subject header',()=>{const r=analyzeMail('From:\nSubject: Meeting\n明天见。');assert.ok(!r.facts.some(x=>x.title==='提供的发件信息'));assert.ok(r.unknown.some(x=>x.includes('发件地址')));});
+test('URL redaction removes Unicode and encoded user credentials',()=>{for(const url of ['https://demo:演示口令@example.org/login?token=FAKE','https://demo:Demo%40Secret%21@example.org/account']){const r=redactMail(url);assert.ok(!r.includes('demo:'));assert.ok(!r.includes('演示口令'));assert.ok(!r.includes('Demo%40Secret'));assert.ok(r.includes('example.org'));}});
+test('URL analysis discloses its 30-link limit',()=>{const r=analyzeMail(Array.from({length:31},(_,i)=>`https://a${i}.example.org/`).join('\n'));assert.equal(r.urls.length,30);assert.ok(r.unknown.some(x=>x.includes('30')&&x.includes('未')));});
+test('malformed URLs remain explicitly unparsed',()=>{const r=analyzeMail('打开 http://?broken');assert.ok(r.unknown.some(x=>x.includes('无法解析')));assert.ok(!r.facts.some(x=>x.value==='无法解析'));});
