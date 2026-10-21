@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import '../guard.js';
+const {validateSQL,compareRows}=globalThis.SQLDetectiveGuard;
+test('允许单条SELECT与前置注释',()=>assert.equal(validateSQL('-- 调查\nSELECT * FROM products;').ok,true));
+test('拒绝空输入',()=>assert.equal(validateSQL(' ').ok,false));
+test('拒绝写入和多语句',()=>{for(const q of ['DELETE FROM products','SELECT 1; DROP TABLE products','SELECT 1; SELECT 2'])assert.equal(validateSQL(q).ok,false)});
+test('不把字符串中的分号误作多语句',()=>assert.equal(validateSQL("SELECT ';drop' AS note;").ok,true));
+test('拒绝未闭合字符串与过长输入',()=>{assert.equal(validateSQL("SELECT 'oops").ok,false);assert.equal(validateSQL('SELECT '+ 'x'.repeat(6000)).ok,false)});
+test('结果允许行顺序不同，不允许多余或重复行',()=>{assert.equal(compareRows([[2,'b'],[1,'a']],[[1,'a'],[2,'b']]),true);assert.equal(compareRows([[1],[1]],[[1],[2]]),false);assert.equal(compareRows([[1]],[[1],[2]]),false)});
+test('NULL与空串及数字字符串不等价',()=>{assert.equal(compareRows([[null]],[['']]),false);assert.equal(compareRows([['1']],[[1]]),false)});
