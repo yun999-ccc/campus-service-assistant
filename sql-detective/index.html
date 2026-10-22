@@ -14,7 +14,7 @@
   <a class="skip-link" href="#workspace">跳到查询工作台</a>
   <header class="topbar">
     <a class="brand" href="#inventory" aria-label="SQL探案室首页"><span class="brand-mark" aria-hidden="true">S<span>?</span></span><span>SQL探案室<small>用查询寻找证据</small></span></a>
-    <div class="top-actions"><span class="edition">情境实训 · 预览版</span><button id="about-button" class="button quiet" type="button">使用说明 <span aria-hidden="true">↗</span></button></div>
+    <div class="top-actions"><span class="edition">三案九任务 · 2.0</span><button id="about-button" class="button quiet" type="button">使用说明 <span aria-hidden="true">↗</span></button></div>
   </header>
   <div class="engine-banner"><span class="status-dot" aria-hidden="true"></span><span><strong>面向 MySQL 学习 · SQLite 演练版</strong><span class="banner-detail"> 查询在浏览器本地运行，数据均为虚构。</span></span><span id="engine-state" class="engine-state" role="status">引擎加载中…</span></div>
   <div class="layout">
@@ -22,23 +22,23 @@
       <div class="section-label">CASE FILES <span>案件档案</span></div>
       <h1>今天，查哪一案？</h1><p class="muted sidebar-intro">写出查询，核对结果，<br>再给出有证据的判断。</p>
       <nav id="case-list" class="case-list" aria-label="训练案件"></nav>
-      <div class="progress-block"><div class="progress-title"><span>本次调查进度</span><strong id="progress-text">0 / 3</strong></div><progress id="progress" max="3" value="0" aria-label="已完成案件数"></progress><p>完成查询核对与证据判断后记为完成。刷新页面后重置。</p></div>
-      <div class="sidebar-note"><span aria-hidden="true">✦</span><strong>一条查询，一次求证</strong><p>结果是线索。业务结论，还需要核实原始记录。</p></div>
+      <div class="progress-block"><div class="progress-title"><span>当前样本 · 历史完成</span><strong id="progress-text">0 / 9</strong></div><progress id="progress" max="9" value="0" aria-label="历史已完成任务数"></progress><p>显示本组数据的历史完成记录。本次作答状态在结果区单独显示。</p></div>
+      <div class="save-options"><label><input id="save-progress" type="checkbox"> 在本机保存完成记录</label><p>不保存查询文本。可随时清除。</p><button id="clear-progress" class="button text-button" type="button">清除本机记录</button><p id="storage-status" role="status"></p></div><div class="sidebar-note"><span aria-hidden="true">✦</span><strong>一条查询，一次求证</strong><p>结果是线索。业务结论，还需要核实原始记录。</p></div>
       <a href="../" class="return-link">← 返回校务通</a>
     </aside>
-    <main id="workspace" class="workspace">
+    <main id="workspace" class="workspace" tabindex="-1">
       <section class="case-brief" aria-labelledby="case-title">
-        <div class="case-eyebrow"><span id="case-number">案件 01</span><span id="case-level" class="level"></span></div>
+        <div id="case-art" class="case-art" aria-hidden="true"></div><div class="case-eyebrow"><span id="case-number">案件 01</span><span id="case-level" class="level"></span></div>
         <h2 id="case-title"></h2><p id="case-subtitle" class="case-subtitle"></p>
         <p id="case-brief"></p><div id="case-tags" class="tags"></div>
-        <div class="task-box"><span class="task-marker">调查目标</span><p id="case-task"></p></div>
+        <nav id="task-nav" class="task-nav" aria-label="本案递进任务"></nav><div class="task-box"><span class="task-marker" id="task-title">调查目标</span><p id="case-task"></p></div>
       </section>
-      <section class="data-section" aria-labelledby="data-title">
-        <div class="section-heading"><h3 id="data-title"><span class="step-number">01</span> 先读证据表</h3><span class="muted small">点击表名查看前 20 行</span></div>
-        <div id="schema-list" class="schema-list"></div>
+      <section class="dataset-controls" aria-label="数据与辅导设置"><label>数据规模<select id="mode-select"><option value="guide">引导样本 · 小规模</option><option value="practice">练习样本 · 更多记录</option></select></label><label>当前样本<select id="sample-select"><option value="0">A组 · 初始线索</option><option value="1">B组 · 变化核查</option><option value="2">C组 · 交叉验证</option></select></label><label>反馈方式<select id="help-select"><option value="guided">引导 · 显示差异数</option><option value="challenge">挑战 · 只显示是否通过</option></select></label></section><p class="dataset-note" id="dataset-note"></p><section class="data-section" aria-labelledby="data-title">
+        <div class="section-heading"><h3 id="data-title"><span class="step-number">01</span> 先读证据表</h3><span class="muted small">表数据与查询结果分别展示</span></div>
+        <div id="schema-list" class="schema-list"></div><div id="relation" class="relation"></div><details id="data-browser" class="data-browser"><summary>浏览证据数据 <span id="preview-title">选择上方表名</span></summary><div class="preview-toolbar"><label>筛选当前表<input id="preview-search" type="search" autocomplete="off" placeholder="输入编号、名称或状态…"></label><span id="preview-meta" class="small muted"></span></div><div id="preview-panel" class="result-panel"></div><div class="pagination"><button id="preview-prev" class="button secondary" type="button">上一页</button><span id="preview-page" role="status"></span><button id="preview-next" class="button secondary" type="button">下一页</button></div></details>
       </section>
       <section class="editor-section" aria-labelledby="editor-title">
-        <div class="section-heading"><h3 id="editor-title"><span class="step-number">02</span> 编写调查 SQL</h3><button id="reset-button" class="button text-button" type="button">重置本案</button></div>
+        <div class="section-heading"><h3 id="editor-title"><span class="step-number">02</span> 编写调查 SQL</h3><button id="reset-button" class="button text-button" type="button">重置当前任务</button></div>
         <div class="editor-shell"><div class="editor-toolbar"><span><span class="file-dot"></span> investigation.sql</span><span>只读 · 单条 SELECT</span></div><label class="sr-only" for="sql-editor">SQL查询编辑器</label><textarea id="sql-editor" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-describedby="editor-help" maxlength="6000"></textarea><div class="editor-bottom"><span id="editor-help">Ctrl / ⌘ + Enter 运行<span class="desktop-only"> · 最多 200 行</span></span><button id="run-button" class="button primary" type="button" disabled><span aria-hidden="true">▶</span> 运行查询</button></div></div>
         <div id="query-status" class="query-status" role="status">准备查询后，点击“运行查询”。</div>
         <button id="retry-button" class="button secondary" type="button" hidden>重新加载数据库引擎</button>
@@ -46,22 +46,22 @@
       <section class="result-section" aria-labelledby="result-title">
         <div class="section-heading"><h3 id="result-title"><span class="step-number">03</span> 核对查询结果</h3><span id="result-meta" class="muted small"></span></div>
         <div id="result-panel" class="result-panel"><div class="empty-state"><span aria-hidden="true">▤</span><strong>证据等待被发现</strong><p>可以先查看一张表，再尝试组合查询。</p></div></div>
-        <div id="grade" class="grade" role="status" hidden></div>
-        <div id="interpretation" class="interpretation" hidden><h4>查询吻合。你的结论是？</h4><p id="reason-question"></p><fieldset id="reason-choices"><legend class="sr-only">选择符合证据边界的判断</legend></fieldset><p id="reason-feedback" role="status"></p></div>
+        <div id="verification" class="verification" hidden></div><div id="chart-panel" class="chart-panel" hidden></div><div id="grade" class="grade" role="status" hidden></div>
+        <div id="interpretation" class="interpretation" hidden><h4>查询吻合。你的结论是？</h4><p id="reason-question"></p><fieldset id="reason-choices"><legend class="sr-only">选择符合证据边界的判断</legend></fieldset><p id="reason-feedback" role="status"></p><button id="next-task" class="button primary" type="button" hidden>进入下一任务 →</button></div>
       </section>
-      <details class="history"><summary>本案查询记录 <span id="history-count">0</span></summary><ol id="history-list"></ol></details>
+      <details class="history"><summary>当前任务查询记录 <span id="history-count">0</span></summary><ol id="history-list"></ol></details>
     </main>
     <aside class="guide-sidebar" aria-label="调查辅导">
       <div class="guide-heading"><span class="guide-icon" aria-hidden="true">↗</span><div><h3>调查手记</h3><p>本地规则辅导 · Coze 未接入</p></div></div>
       <div class="evidence-trail" aria-label="调查流程"><span class="trail-active">读表</span><i aria-hidden="true">→</i><span id="trail-query">查询</span><i aria-hidden="true">→</i><span id="trail-conclude">判断</span></div>
       <section class="hint-section"><div class="section-heading"><h4>卡住时，看一条线索</h4><span id="hint-count" class="small muted">0 / 3</span></div><p class="muted small">先说明方向，再给出方法。每次只展开一步。</p><ol id="hint-list" class="hint-list"></ol><button id="hint-button" class="button secondary full" type="button">打开第一条线索 <span aria-hidden="true">+</span></button></section>
       <section class="boundary-note"><h4><span aria-hidden="true">!</span> 证据边界</h4><p id="case-caution"></p></section>
-      <details id="reference" class="reference"><summary>查看参考解法</summary><p class="small muted">查看后会在复盘中记录。参考解法仅是可行写法之一。</p><pre><code id="reference-code"></code></pre><button id="load-answer" class="button secondary full" type="button">放入编辑器</button></details>
-      <section class="recap-section"><h4>把这次调查带走</h4><p class="small muted">导出 SQL、结果、提示使用和判断记录，方便课后复盘。</p><button id="export-button" class="button secondary full" type="button">↓ 下载本案复盘</button><p class="privacy-note">无登录、无上传、无真实业务数据。</p></section>
+      <details id="reference" class="reference"><summary>查看参考解法</summary><p class="small muted">查看后会在复盘中记录。参考解法仅是可行写法之一，仍需验证三组数据。</p><pre><code id="reference-code"></code></pre><button id="load-answer" class="button secondary full" type="button">放入编辑器</button></details>
+      <section class="recap-section"><h4>把这次调查带走</h4><p class="small muted">导出提交SQL、三组验证、本次判断与历史完成记录。</p><button id="export-button" class="button secondary full" type="button">↓ 下载本任务复盘</button><p class="privacy-note">无登录、无上传 · 仅使用虚构业务数据。</p></section>
     </aside>
   </div>
-  <footer>SQL探案室 · 创新应用原型 <span>真实查询执行 / 固定样本核对 / 学习用途</span><a href="https://github.com/yun999-ccc/campus-service-assistant/tree/main/sql-detective" target="_blank" rel="noopener noreferrer">项目源码 ↗</a></footer>
-  <dialog id="about-dialog" aria-labelledby="about-title"><div class="dialog-heading"><h2 id="about-title">从一条 SQL，到一个有依据的结论</h2><button id="close-about" type="button" class="icon-button" aria-label="关闭使用说明">×</button></div><ol class="instructions"><li>选择案件，阅读目标和字段，点击表名查看数据。</li><li>编辑单条 SELECT，运行后核对输出列及业务口径。</li><li>结果吻合后，完成证据判断；需要帮助时逐条打开线索。</li><li>下载复盘。参考解法使用情况也会如实记录。</li></ol><div class="about-boundary"><strong>当前能力与限制</strong><p>数据库是 sql.js 1.13.0 提供的 SQLite，不连接真实 MySQL。JOIN、聚合和子查询可在此练习；MySQL 专属语法、权限管理及执行计划不在当前范围。</p><p>辅导来自预设规则，不是已接入的 Coze 智能体。当前以固定样本的结果核对，不能证明查询在所有数据上都正确，也不能据此判断责任或执行真实授权变更。</p><p>所有数据均为虚构。代码与数据库引擎下载后在本地执行；页面不保存个人信息或查询，不要输入真实账号、密钥或客户资料。</p></div><button id="start-button" class="button primary full" type="button">开始调查</button></dialog>
+  <footer>SQL探案室 · 创新应用原型 <span>真实查询执行 / 三组样本验证 / 学习用途</span><a href="https://github.com/yun999-ccc/campus-service-assistant/tree/main/sql-detective" target="_blank" rel="noopener noreferrer">项目源码 ↗</a></footer>
+  <dialog id="about-dialog" aria-labelledby="about-title"><div class="dialog-heading"><h2 id="about-title">从一条 SQL，到一个有依据的结论</h2><button id="close-about" type="button" class="icon-button" aria-label="关闭使用说明">×</button></div><ol class="instructions"><li>选择案件，阅读目标和字段，点击表名查看数据。</li><li>编辑单条 SELECT，运行后核对输出列及业务口径。</li><li>结果吻合后，完成证据判断；需要帮助时逐条打开线索。</li><li>下载复盘。参考解法使用情况也会如实记录。</li></ol><div class="about-boundary"><strong>当前能力与限制</strong><p>数据库是 sql.js 1.13.0 提供的 SQLite，不连接真实 MySQL。JOIN、聚合和子查询可在此练习；MySQL 专属语法、权限管理及执行计划不在当前范围。</p><p>辅导来自预设规则，不是已接入的 Coze 智能体。当前在三组可复现的虚构数据中核对结果，不能证明查询在所有数据上都正确；前端测试集也不具备考试保密或防作弊能力，也不能据此判断责任或执行真实授权变更。</p><p>所有数据均为虚构。代码与数据库引擎下载后在本地执行；页面不上传查询；可选择仅在本机保存完成标记，不持久保存查询文本，不要输入真实账号、密钥或客户资料。</p></div><button id="start-button" class="button primary full" type="button">开始调查</button></dialog>
   <noscript>此页面需要启用 JavaScript 才能加载数据库和运行 SQL。</noscript>
 </body>
 </html>

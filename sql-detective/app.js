@@ -1,156 +1,132 @@
-import {cases,seed} from './cases.js';
+import {cases,allTasks} from './tasks.js';
+import {buildDataset,DATA_VERSION} from './data.js';
+import {createAttempt,isCurrent,editAttempt,recordAttempt,chooseAnswer,currentPassed,readyStatus} from './model.js';
+import {illustration,chartSpec} from './visuals.js';
 import './guard.js';
-const {validateSQL,compareRows}=globalThis.SQLDetectiveGuard;
 const $=id=>document.getElementById(id);
-const states=new Map(cases.map(c=>[c.id,{sql:c.starter,hints:0,reference:false,history:[],completed:false,last:null,choice:null}]));
-let active=cases.find(c=>c.id===location.hash.slice(1))||cases[0], worker,ready=false,pending=null,engineTimer,queryTimer,sequence=0;
-const current=()=>states.get(active.id);
-const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
+const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
+const {validateSQL}=globalThis.SQLDetectiveGuard;
+const params=new URLSearchParams(location.search);
+let mode=params.get('mode')==='practice'?'practice':'guide',sample=[0,1,2].includes(Number(params.get('sample')))?Number(params.get('sample')):0;
+let active=cases[0],task=active.tasks[0],feedback='guided',previewTable=null,previewPage=0;
+const states=new Map(),datasets=new Map();
+const key=(t=task)=>`${mode}:${sample}:${t.id}`;
+function state(t=task){const k=key(t);if(!states.has(k))states.set(k,createAttempt(t.starter,t.choices));return states.get(k);}
+function dataset(v=sample){const k=mode+':'+v;if(!datasets.has(k))datasets.set(k,buildDataset(mode,v));return datasets.get(k);}
 function status(text,error=false){$('query-status').textContent=text;$('query-status').classList.toggle('error',error);}
-function setControls(){
-  $('run-button').disabled=!ready||!!pending;
-  $('run-button').innerHTML=pending?'<span aria-hidden="true">◌</span> 查询中…':'<span aria-hidden="true">▶</span> 运行查询';
-  document.querySelectorAll('.table-button').forEach(b=>b.disabled=!ready||!!pending);
-}
-function startEngine(){
-  if(worker)worker.terminate();clearTimeout(engineTimer);clearTimeout(queryTimer);
-  ready=false;pending=null;setControls();$('retry-button').hidden=true;$('engine-state').textContent='引擎加载中…';
-  try{worker=new Worker(new URL('./worker.js',import.meta.url));}
-  catch{engineFailure('浏览器未能启动查询引擎。请用最新版浏览器打开网站，不能直接双击 HTML 文件。');return;}
-  engineTimer=setTimeout(()=>engineFailure('数据库引擎加载超时，请检查网络后重试。'),15000);
-  worker.onerror=()=>engineFailure('查询引擎加载失败，请刷新页面或重新加载。');
+function parseRoute(){const [id,index]=location.hash.slice(1).split('/');active=cases.find(c=>c.id===id)||cases[0];const i=Number(index);task=active.tasks[Number.isInteger(i)&&i>=0&&i<3?i:0];}
+const storageKey='sql-detective-progress-v2';let keepProgress=false;
+function loadProgress(){try{const raw=localStorage.getItem(storageKey);if(!raw)return;const saved=JSON.parse(raw);if(saved.version!==DATA_VERSION||!Array.isArray(saved.keys))return;keepProgress=true;for(const item of saved.keys){const [m,v,id]=String(item).split(':');if(!['guide','practice'].includes(m)||!['0','1','2'].includes(v))continue;const t=allTasks.find(t=>t.id===id);if(!t)continue;const s=createAttempt(t.starter,t.choices);s.completed={version:DATA_VERSION,restored:true};states.set(item,s);}}catch{$('storage-status').textContent='无法读取本机记录，仍可正常练习。';}}
+function persist(){if(!keepProgress)return;try{localStorage.setItem(storageKey,JSON.stringify({version:DATA_VERSION,keys:[...states].filter(([,s])=>s.completed).map(([k])=>k)}));$('storage-status').textContent='仅保存完成标记，不保存SQL。';}catch{$('storage-status').textContent='本机存储不可用，本次进度仍保留在页面中。';}}
+let worker,ready=false,pending=null,engineTimer,queryTimer,sequence=0,generation=0;
+function controls(){const busy=!!pending;$('run-button').disabled=!ready||busy;$('run-button').textContent=busy?'◌ 执行与验证中…':'▶ 运行并验证';$('retry-button').hidden=ready||(!worker&&busy);}
+function failEngine(message){clearTimeout(engineTimer);clearTimeout(queryTimer);if(worker)worker.terminate();ready=false;const failed=pending;pending=null;if(failed&&failed.key===key()){recordAttempt(state(),failed.sql,null,'引擎失败');renderHistory();renderAssessment();}status(message,true);$('engine-state').textContent='引擎未就绪';$('retry-button').hidden=false;controls();}
+function startEngine(retry=false){
+  if(worker)worker.terminate();clearTimeout(engineTimer);clearTimeout(queryTimer);const currentGeneration=++generation;
+  ready=false;pending=null;$('engine-state').textContent='引擎加载中…';status(retry?'正在重新加载数据库引擎…':'正在准备虚构训练数据库…');controls();$('retry-button').hidden=true;
+  try{worker=new Worker(new URL('./worker.js',import.meta.url));}catch{failEngine('不能启动查询引擎。请使用浏览器打开HTTP网站。');return;}
+  engineTimer=setTimeout(()=>{if(currentGeneration===generation)failEngine('数据库加载超过15秒，请检查网络后重新加载。');},15000);
+  worker.onerror=()=>{if(currentGeneration===generation)failEngine('数据库引擎加载失败，请重新加载。');};
   worker.onmessage=({data})=>{
-    if(data.type==='ready'){clearTimeout(engineTimer);ready=true;$('engine-state').textContent='SQLite 已就绪';setControls();return;}
-    if(data.type==='fatal'){engineFailure(data.error);return;}
+    if(currentGeneration!==generation)return;
+    if(data.type==='ready'){clearTimeout(engineTimer);ready=true;$('engine-state').textContent='SQLite 已就绪';status(readyStatus(retry?'retry':'initial'));controls();return;}
+    if(data.type==='fatal'){failEngine(data.error);return;}
     if(!pending||data.id!==pending.id)return;
-    const request=pending;clearTimeout(queryTimer);pending=null;setControls();
-    if(request.caseId!==active.id)return;
-    if(data.type==='error'){
-      status('SQL 未执行成功：'+data.error,true);
-      if(request.purpose==='query'){saveAttempt(request.sql,null,'执行错误：'+data.error);hideGrade();renderEmpty('查询未完成','检查表名、字段和 SQL 语法后重试。');}
-      return;
-    }
-    renderResult(data,request.purpose==='preview'?request.table:null);
-    if(request.purpose==='preview'){status('已查看 '+request.table+' 的前 20 行。编辑器中的调查 SQL 保持不变。');return;}
-    const matched=!data.truncated&&compareRows(data.values,active.expected);
-    saveAttempt(request.sql,data,matched?'固定样本结果吻合':'结果尚未吻合',matched);
-    status('查询完成。数据库耗时 '+data.elapsed+' ms（含本地数据初始化），返回 '+data.values.length+(data.truncated?'＋':'')+' 行。');
-    showGrade(matched,data.truncated);
-    if(request.sql!==current().sql){hideGrade();status('上一次提交的查询已执行，但编辑器内容已变化。请重新运行当前 SQL 后核对。');}
+    const request=pending;pending=null;clearTimeout(queryTimer);controls();if(request.key!==key())return;
+    if(data.type==='error'){recordAttempt(state(),request.sql,null,'SQL执行失败：'+data.error);emptyResult('SQL尚未执行成功','检查字段、表名和语法后重试。');status('SQL执行失败：'+data.error,true);}
+    else {recordAttempt(state(),request.sql,data,data.matched?'三组样本全部吻合':'尚未通过全部样本',data.matched);renderResult(data);status('查询已执行，三组验证共耗时 '+data.elapsed+' ms（含初始化）。');}
+    renderHistory();renderAssessment();
   };
 }
-function engineFailure(message){
-  clearTimeout(engineTimer);clearTimeout(queryTimer);if(worker)worker.terminate();ready=false;
-  const failed=pending;pending=null;
-  if(failed?.purpose==='query'){saveAttempt(failed.sql,null,'引擎失败');hideGrade();}
-  $('engine-state').textContent='引擎未就绪';$('retry-button').hidden=false;status(message,true);setControls();
-}
-function execute(sql,purpose='query',table=null){
-  if(pending||!ready){status('请等待数据库引擎准备好。',true);return;}
+function execute(){
+  const sql=$('sql-editor').value,s=state();editAttempt(s,sql);
+  if(!ready||pending){status('请等待引擎就绪或当前查询结束。',true);return;}
   const validation=validateSQL(sql);
-  if(!validation.ok){status(validation.error,true);if(purpose==='query'){saveAttempt(sql,null,'输入被拦截');hideGrade();renderEmpty('请调整查询','当前只运行一条 SELECT。数据不会被修改。');}return;}
-  hideGrade();
-  const id=++sequence;pending={id,sql,caseId:active.id,purpose,table};setControls();status(purpose==='preview'?'正在读取证据表…':'正在执行调查查询…');
+  if(!validation.ok){recordAttempt(s,sql,null,'输入被拦截');emptyResult('请调整查询',validation.error);status(validation.error,true);renderHistory();renderAssessment();return;}
+  const id=++sequence;pending={id,key:key(),sql};controls();renderAssessment();status('正在运行当前SQL，并验证三组不同样本…');
   queryTimer=setTimeout(()=>{
     if(!pending||pending.id!==id)return;
-    if(purpose==='query'){saveAttempt(sql,null,'查询超时');renderEmpty('查询已中止','请检查连接条件，缩小结果范围后重试。');}
-    startEngine();status('查询超过 1.5 秒，已中止并重建演练环境。请简化 SQL 后重试。',true);
+    recordAttempt(state(),sql,null,'查询超时');emptyResult('查询已中止','请检查连接条件并缩小计算范围。');startEngine(true);status('查询超过1.5秒，已中止，正在恢复数据库…',true);renderHistory();renderAssessment();
   },1500);
-  worker.postMessage({id,sql:validation.sql,seed});
-}
-function saveAttempt(sql,result,label,matched=false){
-  const s=current();s.last={sql,result,label,matched};s.choice=null;
-  s.history.unshift({sql,label});s.history=s.history.slice(0,10);renderHistory();
+  worker.postMessage({id,sql:validation.sql,seeds:[0,1,2].map(i=>dataset((sample+i)%3).seed),reference:task.answer});
 }
 function renderNavigation(){
-  $('case-list').replaceChildren();
-  for(const c of cases){
-    const b=el('button','case-link');b.type='button';b.setAttribute('aria-label',`案件${c.number} ${c.title}${states.get(c.id).completed?'，已完成':''}`);
-    if(c.id===active.id)b.setAttribute('aria-current','page');
-    b.append(el('span','case-index',c.number));const label=el('span');label.append(el('span','case-name',c.title),el('small','',c.level));b.append(label);
-    if(states.get(c.id).completed){const check=el('span','completion','✓');check.setAttribute('aria-hidden','true');b.append(check);}
-    b.onclick=()=>{if(active.id!==c.id)location.hash=c.id;};$('case-list').append(b);
-  }
-  const count=[...states.values()].filter(s=>s.completed).length;$('progress-text').textContent=count+' / 3';$('progress').value=count;
+  const nav=$('case-list');nav.replaceChildren();
+  for(const c of cases){const count=c.tasks.filter(t=>state(t).completed).length;const a=el('a','case-link');a.href='#'+c.id+'/0';a.setAttribute('aria-label',`案件${c.number} ${c.title}`);if(c.id===active.id)a.setAttribute('aria-current','page');a.append(el('span','case-index',c.number));const label=el('span');label.append(el('span','case-name',c.title),el('small','',count+' / '+c.tasks.length+' 项曾完成'));a.append(label);if(count===c.tasks.length)a.append(el('span','completion','✓'));nav.append(a);}
+  const count=allTasks.filter(t=>state(t).completed).length;$('progress-text').textContent=count+' / '+allTasks.length;$('progress').max=allTasks.length;$('progress').value=count;
+  $('task-nav').replaceChildren();for(const t of active.tasks){const a=el('a','task-link');a.href='#'+active.id+'/'+t.index;if(t.id===task.id)a.setAttribute('aria-current','step');a.append(el('span','',String(t.index+1).padStart(2,'0')),el('strong','',t.stage),el('small','',state(t).completed?'曾完成':'待调查'));$('task-nav').append(a);}
 }
 function renderCase(){
-  const s=current();document.title=active.title+' · SQL探案室';
-  for(const [id,value] of Object.entries({'case-number':'案件 '+active.number,'case-level':active.level,'case-title':active.title,'case-subtitle':active.subtitle,'case-brief':active.brief,'case-task':active.task,'case-caution':active.caution,'reference-code':active.answer,'reason-question':active.question}))$(id).textContent=value;
-  $('case-tags').replaceChildren(...active.tags.map(t=>el('span','',t)));
-  $('schema-list').replaceChildren();
-  for(const table of active.tables){
-    const card=el('div','schema-card'),b=el('button','table-button');b.type='button';b.append(el('strong','',table.name),el('span','','↗'));b.setAttribute('aria-label','查看 '+table.name+' 示例数据');b.onclick=()=>execute('SELECT * FROM '+table.name+' LIMIT 20;','preview',table.name);
-    const list=el('ul','fields');for(const [name,type]of table.fields){const li=el('li');li.append(el('code','',name),el('span','',type));list.append(li);}card.append(b,el('p','',table.label),list);$('schema-list').append(card);
-  }
-  $('sql-editor').value=s.sql;
+  parseRoute();const s=state();document.body.dataset.case=active.id;document.title=task.title+' · SQL探案室';
+  for(const[id,value]of Object.entries({'case-number':'案件 '+active.number,'case-level':active.level,'case-title':active.title,'case-subtitle':active.subtitle,'case-brief':active.brief,'case-task':task.task,'task-title':task.stage+'任务 · '+task.title,'case-caution':active.caution,'reference-code':task.answer,'reason-question':task.question}))$(id).textContent=value;
+  $('case-art').innerHTML=illustration(active.id);$('case-tags').replaceChildren(...active.tags.map(t=>el('span','',t)));$('sql-editor').value=s.sql;
+  $('mode-select').value=mode;$('sample-select').value=String(sample);$('save-progress').checked=keepProgress;
+  const tables=dataset().tables,total=active.tables.reduce((n,t)=>n+tables[t.name].length,0);
+  $('dataset-note').textContent=`${mode==='guide'?'引导':'练习'}样本 · ${active.tables.length}张证据表 / ${total}条记录 · 当前${'ABC'[sample]}组 · 执行时交叉验证全部三组。${active.id==='refund'?'金额以分存储，图表以元展示。':''}`;
+  $('schema-list').replaceChildren();for(const table of active.tables){const card=el('div','schema-card'),b=el('button','table-button');b.type='button';b.append(el('strong','',table.name),el('span','',tables[table.name].length+'条 ↗'));b.setAttribute('aria-label','查看 '+table.name+' 示例数据');b.onclick=()=>{previewTable=table;previewPage=0;$('preview-search').value='';$('data-browser').open=true;renderPreview();};const list=el('ul','fields');for(const[name,type]of table.fields){const li=el('li');li.append(el('code','',name),el('span','',type));list.append(li);}card.append(b,el('p','',table.label),list);$('schema-list').append(card);}
+  $('relation').textContent=active.id==='inventory'?'products.product_id  1 → 多  stock_moves.product_id':active.id==='refund'?'orders.order_id  1 → 多  refunds.order_id':'实际台账 ↔ 批准清单：角色 + 表名 + 操作，同时匹配';
+  previewTable=null;previewPage=0;$('data-browser').open=false;$('preview-title').textContent='选择上方表名';
+  $('reference').open=false;$('reference').dataset.owner=key();
   $('reason-choices').replaceChildren(el('legend','sr-only','选择符合证据边界的判断'));
-  active.choices.forEach((choice,i)=>{
-    const label=el('label','choice'),input=el('input');input.type='radio';input.name='reason';input.value=String(i);input.onchange=()=>chooseReason(i);label.append(input,el('span','',choice));$('reason-choices').append(label);
-  });
-  $('reference').open=false;
-  if(s.last?.result){renderResult(s.last.result);showGrade(s.last.matched,s.last.result.truncated);if(s.last.sql!==s.sql)hideGrade();if(s.choice!==null&&s.last.sql===s.sql){const input=$('reason-choices').querySelector(`input[value="${s.choice}"]`);if(input)input.checked=true;renderReason();}}
-  else {renderEmpty('证据等待被发现','可以先查看一张表，再尝试组合查询。');hideGrade();}
-  status(s.last?s.last.label:'准备查询后，点击“运行查询”。');renderNavigation();renderHints();renderHistory();setControls();
+  for(const i of s.order){const label=el('label','choice'),input=el('input');input.type='radio';input.name='reason';input.value=String(i);input.onchange=()=>{chooseAnswer(state(),i,task.correct,{version:DATA_VERSION,dataKey:key(),at:new Date().toISOString()});renderNavigation();persist();renderAssessment();};label.append(input,el('span','',task.choices[i]));$('reason-choices').append(label);}
+  if(s.last?.result)renderResult(s.last.result);else emptyResult('证据等待被发现','先读表，再提交当前任务的调查SQL。');
+  renderNavigation();renderHints();renderHistory();renderAssessment();controls();
+  if(!ready)status('数据库尚未就绪，请等待或重新加载。',true);else status(s.last?.label||'数据库已就绪，准备后运行当前任务。');
+  if(s.last&&!isCurrent(s))status('当前SQL尚未执行。下方是上次提交的结果，已标记过期。');
 }
-function renderHints(){
-  const s=current();$('hint-count').textContent=s.hints+' / 3';$('hint-list').replaceChildren(...active.hints.slice(0,s.hints).map(t=>el('li','',t)));
-  $('hint-button').disabled=s.hints>=3;$('hint-button').textContent=s.hints>=3?'三条线索已全部展开':s.hints===0?'打开第一条线索 ＋':'再看一条线索 ＋';
+function renderPreview(){
+  if(!previewTable)return;
+  const all=dataset().tables[previewTable.name],needle=$('preview-search').value.trim().toLowerCase();const rows=all.filter(row=>!needle||row.some(v=>String(v).toLowerCase().includes(needle)));const pages=Math.max(1,Math.ceil(rows.length/12));previewPage=Math.min(previewPage,pages-1);
+  $('preview-title').textContent=previewTable.name;$('preview-meta').textContent=rows.length+' / '+all.length+' 条';$('preview-page').textContent=(previewPage+1)+' / '+pages+' 页';$('preview-prev').disabled=previewPage===0;$('preview-next').disabled=previewPage>=pages-1;
+  tableInto($('preview-panel'),{columns:previewTable.fields.map(f=>f[0]),values:rows.slice(previewPage*12,previewPage*12+12)},'证据表 '+previewTable.name);
 }
-function renderHistory(){
-  const s=current();$('history-count').textContent=String(s.history.length);$('history-list').replaceChildren();
-  if(!s.history.length){$('history-list').append(el('li','','还没有执行调查查询。表数据预览不计入查询记录。'));return;}
-  for(const item of s.history){const li=el('li');li.append(el('span','',item.label),el('code','',item.sql));$('history-list').append(li);}
+function tableInto(container,data,caption){const scroll=el('div','table-scroll');scroll.tabIndex=0;scroll.setAttribute('role','region');scroll.setAttribute('aria-label','可滚动的'+caption);const table=el('table');table.append(el('caption','sr-only',caption));const head=el('thead'),hr=el('tr');for(const c of data.columns){const th=el('th','',c);th.scope='col';hr.append(th);}head.append(hr);table.append(head);const body=el('tbody');for(const row of data.values){const tr=el('tr');for(const v of row)tr.append(el('td',v===null?'null-value':'',v===null?'NULL':v instanceof Uint8Array?'[二进制]':String(v)));body.append(tr);}table.append(body);scroll.append(table);container.replaceChildren(scroll);if(!data.values.length)container.append(el('p','result-foot','没有匹配的记录。'));}
+function emptyResult(title,description){const box=el('div','empty-state');box.append(el('span','','▤'),el('strong','',title),el('p','',description));$('result-panel').replaceChildren(box);$('result-meta').textContent='';}
+function renderResult(data){tableInto($('result-panel'),data,'调查查询结果');$('result-meta').textContent=data.values.length+(data.truncated?'＋':'')+' 行 / '+data.columns.length+' 列';if(data.truncated)$('result-panel').append(el('p','result-foot','超过200行，仅显示前200行，本次不通过。'));}
+function renderAssessment(){
+  const s=state(),fresh=isCurrent(s),result=s.last?.result;
+  for(const id of ['grade','interpretation','verification','chart-panel'])$(id).hidden=true;
+  $('trail-query').className='';$('trail-conclude').className='';$('next-task').hidden=true;$('result-panel').classList.toggle('outdated',!!s.last&&!fresh);
+  if(!s.last)return;
+  $('grade').hidden=false;$('grade').className='grade';
+  if(!fresh){$('grade').textContent='当前SQL未执行：下表为上次提交结果，已过期。';return;}
+  if(pending){$('grade').textContent='正在验证当前提交；暂不使用上次结论。';return;}
+  if(!result){$('grade').textContent=s.last.label;return;}
+  const passed=result.checks.filter(c=>c.matched).length;$('grade').classList.toggle('success',s.last.matched);
+  $('grade').textContent=s.last.matched?'✓ 三组数据全部吻合。继续完成证据判断。':`${passed} / ${result.checks.length} 组通过。请核查字段顺序、筛选和聚合口径。`;
+  $('verification').hidden=false;$('verification').replaceChildren();for(const check of result.checks){const chip=el('div','check-chip '+(check.matched?'pass':''));chip.append(el('strong','',`样本${'ABC'[(sample+check.group-1)%3]} ${check.matched?'✓':'待核查'}`));if(feedback==='guided'&&!check.matched)chip.append(el('small','',check.truncated?'超过200行':`缺少${check.missing}行 / 多出${check.extra}行`));$('verification').append(chip);}
+  if(!s.last.matched)return;
+  $('trail-query').className='trail-active';$('interpretation').hidden=false;
+  const correct=currentPassed(s,task.correct);$('reason-feedback').textContent=s.choice===null?'':(correct?'✓ 本次作答通过。':'本次判断需要调整。')+task.explain;$('reason-feedback').classList.toggle('error',s.choice!==null&&!correct);
+  for(const input of $('reason-choices').querySelectorAll('input'))input.checked=Number(input.value)===s.choice;
+  $('trail-conclude').className=correct?'trail-active':'';
+  if(correct){const index=allTasks.findIndex(t=>t.id===task.id);$('next-task').hidden=index===allTasks.length-1;$('next-task').textContent='进入下一任务 →';}
+  renderChart(result);
 }
-function renderEmpty(title,description){const box=el('div','empty-state');box.append(el('span','','▤'),el('strong','',title),el('p','',description));$('result-panel').replaceChildren(box);$('result-meta').textContent='';}
-function renderResult(data,tableName=null){
-  const scroll=el('div','table-scroll');scroll.tabIndex=0;scroll.setAttribute('role','region');scroll.setAttribute('aria-label','可滚动的查询结果表');
-  const table=el('table'),caption=el('caption','sr-only',tableName?tableName+' 的样本数据':'调查查询结果');table.append(caption);
-  const head=el('thead'),tr=el('tr');for(const name of data.columns){const th=el('th','',name);th.scope='col';tr.append(th);}head.append(tr);table.append(head);
-  const body=el('tbody');for(const row of data.values){const line=el('tr');for(const v of row)line.append(el('td',v===null?'null-value':'',v===null?'NULL':v instanceof Uint8Array?'[二进制]':String(v)));body.append(line);}table.append(body);scroll.append(table);
-  $('result-panel').replaceChildren(scroll);
-  if(!data.values.length)$('result-panel').append(el('p','result-foot','查询执行成功，返回 0 行。'));
-  if(data.truncated)$('result-panel').append(el('p','result-foot','结果超过 200 行，仅显示前 200 行。本次不作通过核对。'));
-  if(tableName)$('result-panel').append(el('p','result-foot','证据表预览 · 不计为任务核对；运行编辑器中的 SQL 后再判断。'));
-  $('result-meta').textContent=(tableName?'表预览 · ':'')+data.values.length+(data.truncated?'＋':'')+' 行 / '+data.columns.length+' 列';
+function renderChart(result){
+  const spec=chartSpec(task.id,result),panel=$('chart-panel');if(!spec)return;panel.hidden=false;panel.replaceChildren(el('h4','',spec.title));
+  if(spec.kind==='note'){panel.append(el('p','small muted',spec.text));return;}
+  if(spec.kind==='matrix'){const rows=spec.roles.map(role=>[role,...spec.objects.map(obj=>spec.rows.filter(r=>String(r[0])===role&&String(r[1])===obj).map(r=>r[2]||'SELECT').join('、')||'—')]);const box=el('div');tableInto(box,{columns:['角色',...spec.objects],values:rows},'查询结果权限矩阵');panel.append(box);panel.append(el('p','small muted','仅展示本次查询返回的授权；矩阵不代表完整系统权限。'));return;}
+  panel.append(el('p','small muted','与上方实际查询结果对应 · 单位：'+spec.unit));const max=Math.max(1,...spec.items.flatMap(i=>i.values.map(Math.abs)));
+  const list=el('div','chart-bars');for(const item of spec.items){const row=el('div','chart-row');row.append(el('strong','chart-name',item.name));item.values.forEach((value,i)=>{const line=el('div','bar-line'),track=el('div','bar-track'),bar=el('span','bar-fill series-'+i+(value<0?' negative':''));bar.style.width=Math.max(1,Math.abs(value)/max*100)+'%';track.append(bar);line.append(el('span','bar-label',spec.labels[i]),track,el('span','bar-number',new Intl.NumberFormat('zh-CN',{maximumFractionDigits:2}).format(value)));row.append(line);});list.append(row);}panel.append(list);
 }
-function hideGrade(){
-  $('grade').hidden=true;$('interpretation').hidden=true;$('trail-query').className='';$('trail-conclude').className='';$('reason-feedback').textContent='';
-}
-function showGrade(matched,truncated){
-  $('grade').hidden=false;$('grade').classList.toggle('success',matched);
-  $('grade').textContent=matched?'✓ 固定样本的结果吻合。继续完成下方证据判断。':truncated?'返回行数超出上限，请收紧查询后再核对。':'还未得到目标结果。检查输出列的顺序、筛选条件和聚合口径；也可以打开一条线索。';
-  $('interpretation').hidden=!matched;$('trail-query').className=matched?'trail-active':'';$('trail-conclude').className='';
-  $('reason-feedback').textContent='';$('reason-choices').querySelectorAll('input').forEach(input=>input.checked=false);
-}
-function chooseReason(i){
-  const s=current();if(!s.last?.matched)return;s.choice=i;
-  if(i===active.correct){s.completed=true;renderNavigation();}
-  renderReason();
-}
-function renderReason(){
-  const s=current(),correct=s.choice===active.correct;
-  $('reason-feedback').textContent=(correct?'✓ 本案调查完成。':'再想一想：')+active.explain;
-  $('reason-feedback').classList.toggle('error',!correct);$('trail-conclude').className=correct?'trail-active':'';
-}
-function exportRecap(){
-  const s=current(),last=s.last;
-  const result=last?.result;
-  const lines=['SQL探案室 · 本案复盘','案件：'+active.number+' '+active.title,'导出时间：'+new Date().toLocaleString('zh-CN'),'执行环境：sql.js 1.13.0 / SQLite（不是 MySQL）','辅导状态：本地规则；Coze 未接入','数据来源：项目内置虚构样本','', '调查目标',active.task,'','最近一次调查 SQL',last?.sql||'尚未执行调查查询','', '执行与核对状态',last?.label||'尚未执行','提示使用：'+s.hints+'/3；参考解法：'+(s.reference?'已查看':'未查看'),'结果核对仅适用于固定样本，不证明所有数据下都正确。','', '最近一次查询结果',result?JSON.stringify({columns:result.columns,rows:result.values,truncated:result.truncated},null,2):'无结果','', '与上述查询对应的证据判断',s.choice===null?'尚未完成':active.choices[s.choice]+'（'+(s.choice===active.correct?'符合证据边界':'需要调整')+'）','', '方法复盘',active.knowledge,'', '证据边界',active.caution,active.explain];
-  const url=URL.createObjectURL(new Blob(['\uFEFF'+lines.join('\n')],{type:'text/plain;charset=utf-8'}));const a=el('a');a.href=url;a.download='SQL探案室-'+active.title+'-复盘.txt';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);status('已生成本案复盘文件，请在浏览器下载列表中查看。');
-}
-$('sql-editor').addEventListener('input',()=>{current().sql=$('sql-editor').value;if(!$('interpretation').hidden){hideGrade();status('编辑器内容已更改。请重新运行后核对；查询记录仍保留上一条已执行的 SQL。');}});
-$('sql-editor').addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();execute($('sql-editor').value);}});
-$('run-button').onclick=()=>execute($('sql-editor').value);
-$('retry-button').onclick=startEngine;
-$('hint-button').onclick=()=>{if(current().hints<3)current().hints++;renderHints();};
-$('reference').addEventListener('toggle',()=>{if($('reference').open)current().reference=true;});
-$('load-answer').onclick=()=>{current().reference=true;current().sql=active.answer;$('sql-editor').value=active.answer;hideGrade();$('sql-editor').focus();status('已放入参考解法。运行后可核对结果，复盘会记录已查看参考。');};
-$('export-button').onclick=exportRecap;
-$('reset-button').onclick=()=>{
-  if(!window.confirm('重置本案的 SQL、提示和查询记录？其他案件不受影响。'))return;
-  if(pending)startEngine();states.set(active.id,{sql:active.starter,hints:0,reference:false,history:[],completed:false,last:null,choice:null});renderCase();status('本案已重置。');
-};
-$('about-button').onclick=()=>$('about-dialog').showModal();
-$('close-about').onclick=()=>$('about-dialog').close();$('start-button').onclick=()=>$('about-dialog').close();
-window.addEventListener('hashchange',()=>{const next=cases.find(c=>c.id===location.hash.slice(1));if(!next||next.id===active.id)return;current().sql=$('sql-editor').value;if(pending)startEngine();active=next;renderCase();});
-renderCase();startEngine();
+function renderHints(){const s=state();$('hint-count').textContent=s.hints+' / '+task.hints.length;$('hint-list').replaceChildren(...task.hints.slice(0,s.hints).map(t=>el('li','',t)));$('hint-button').disabled=s.hints>=task.hints.length||feedback==='challenge';$('hint-button').textContent=feedback==='challenge'?'挑战模式：线索已收起':s.hints>=task.hints.length?'全部线索已展开':s.hints?'再看一条线索 ＋':'打开第一条线索 ＋';$('hint-list').hidden=feedback==='challenge';$('reference').hidden=feedback==='challenge';}
+function renderHistory(){$('history-count').textContent=String(state().history.length);$('history-list').replaceChildren(...state().history.map(item=>{const li=el('li');li.append(el('span','',item.label),el('code','',item.sql));return li;}));if(!state().history.length)$('history-list').append(el('li','','还没有调查查询记录；浏览证据表不计入提交。'));}
+function exportRecap(){const s=state(),last=s.last,result=last?.result,lines=['SQL探案室 · 任务复盘','案件：'+active.title,'任务：'+task.stage+' / '+task.title,'导出时间：'+new Intl.DateTimeFormat('zh-CN',{dateStyle:'medium',timeStyle:'medium'}).format(new Date()),'数据库：sql.js 1.13.0 / SQLite；未接入MySQL和Coze','数据：虚构 / '+mode+' / 样本'+'ABC'[sample]+' / 版本'+DATA_VERSION,'','任务目标',task.task,'','最近提交SQL',last?.sql||'无','当前编辑器：'+(last&&!isCurrent(s)?'已更改，尚未执行':'与提交一致或尚未提交'),'执行状态：'+(last?.label||'未执行'),'三组验证：'+(result?result.checks.map(c=>'组'+c.group+':'+(c.matched?'通过':'未通过')).join('；'):'无'),'本次作答：'+(s.choice===null?'尚未判断':currentPassed(s,task.correct)?'通过':'未通过'),'历史完成：'+(s.completed?'曾完成':'未完成'),'提示：'+s.hints+'/'+task.hints.length+'；参考解法：'+(s.reference?'已查看':'未查看'),'','提交结果',result?JSON.stringify({columns:result.columns,rows:result.values,truncated:result.truncated},null,2):'无','证据判断',s.choice===null?'未作答':task.choices[s.choice],'','方法复盘',task.knowledge,'','边界',active.caution,task.explain,'前端三组验证不等于全部数据正确，也不具备考试防作弊能力。'];const url=URL.createObjectURL(new Blob(['\uFEFF'+lines.join('\n')],{type:'text/plain;charset=utf-8'}));const a=el('a');a.href=url;a.download='SQL探案室-'+task.title+'-复盘.txt';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);status('复盘已生成，请查看浏览器下载列表。');}
+function dataChanged(){if(pending)startEngine(true);const url=new URL(location.href);url.searchParams.set('mode',mode);url.searchParams.set('sample',sample);history.replaceState(null,'',url);renderCase();}
+$('sql-editor').addEventListener('input',()=>{editAttempt(state(),$('sql-editor').value);renderAssessment();if(state().last)status(isCurrent(state())?'编辑器与上次提交一致。':'当前SQL尚未执行。上次结果已标记过期，请重新运行。');});
+$('sql-editor').addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();execute();}});
+$('run-button').onclick=execute;$('retry-button').onclick=()=>startEngine(true);
+$('mode-select').onchange=e=>{mode=e.target.value;dataChanged();};$('sample-select').onchange=e=>{sample=Number(e.target.value);dataChanged();};$('help-select').onchange=e=>{feedback=e.target.value;renderHints();renderAssessment();};
+$('preview-search').oninput=()=>{previewPage=0;renderPreview();};$('preview-prev').onclick=()=>{previewPage--;renderPreview();};$('preview-next').onclick=()=>{previewPage++;renderPreview();};
+$('hint-button').onclick=()=>{state().hints=Math.min(task.hints.length,state().hints+1);renderHints();};
+$('reference').addEventListener('toggle',()=>{if($('reference').open){const owner=states.get($('reference').dataset.owner);if(owner)owner.reference=true;}});
+$('load-answer').onclick=()=>{state().reference=true;editAttempt(state(),task.answer);$('sql-editor').value=task.answer;renderAssessment();status('已载入参考解法，尚未执行。复盘会记录已查看参考。');$('sql-editor').focus();};
+$('reset-button').onclick=()=>{if(!window.confirm('清空当前任务在本组数据中的查询、线索和完成记录？'))return;if(pending)startEngine(true);states.set(key(),createAttempt(task.starter,task.choices));persist();renderCase();status('当前任务已重置。');};
+$('next-task').onclick=()=>{const index=allTasks.findIndex(t=>t.id===task.id),next=allTasks[index+1];if(next)location.hash=next.caseId+'/'+next.index;};
+$('save-progress').onchange=e=>{keepProgress=e.target.checked;if(keepProgress)persist();else{try{localStorage.removeItem(storageKey);$('storage-status').textContent='已关闭保存并清除本机记录。';}catch{$('storage-status').textContent='无法清除本机记录，请检查浏览器存储设置。';}}};
+$('clear-progress').onclick=()=>{if(!window.confirm('清除本项目保存在本机的完成标记？当前页面的查询不会丢失。'))return;try{localStorage.removeItem(storageKey);keepProgress=false;$('save-progress').checked=false;$('storage-status').textContent='已清除本机保存，当前会话记录仍保留。';}catch{$('storage-status').textContent='清除失败，请检查浏览器存储设置。';}};
+$('export-button').onclick=exportRecap;$('about-button').onclick=()=>$('about-dialog').showModal();$('close-about').onclick=()=>$('about-dialog').close();$('start-button').onclick=()=>$('about-dialog').close();
+document.querySelector('.skip-link').onclick=e=>{e.preventDefault();$('workspace').focus();$('workspace').scrollIntoView({block:'start'});};
+window.addEventListener('hashchange',()=>{if(pending)startEngine(true);renderCase();});
+loadProgress();renderCase();startEngine();

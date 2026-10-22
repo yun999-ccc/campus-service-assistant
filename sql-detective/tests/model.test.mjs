@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createAttempt,editAttempt,recordAttempt,chooseAnswer,currentPassed,isCurrent,readyStatus} from '../model.js';
+const create=()=>createAttempt('SELECT 1',['a','b','c']);
+test('编辑未通过SQL也会让旧结果失效',()=>{const s=create();recordAttempt(s,s.sql,{values:[[1]]},'未通过',false);editAttempt(s,'SELECT 2');assert.equal(isCurrent(s),false);assert.equal(s.last.sql,'SELECT 1');});
+test('正确改成错误后本次不再通过，历史完成快照保留且不混淆',()=>{const s=create();recordAttempt(s,s.sql,{},'通过',true);chooseAnswer(s,1,1,{version:'x'});assert.equal(currentPassed(s,1),true);chooseAnswer(s,0,1,{});assert.equal(currentPassed(s,1),false);assert.equal(s.completed.choice,1);});
+test('查询途中编辑的结果不能用于答题',()=>{const s=create();editAttempt(s,'SELECT 2');recordAttempt(s,'SELECT 1',{},'通过',true);assert.equal(chooseAnswer(s,1,1,{}),false);assert.equal(s.completed,null);});
+test('新提交不携带上次判断',()=>{const s=create();recordAttempt(s,s.sql,{},'通过',true);chooseAnswer(s,1,1,{});recordAttempt(s,s.sql,{},'通过',true);assert.equal(s.choice,null);assert.equal(currentPassed(s,1),false);});
+test('ready状态不残留超时错误文案',()=>{assert.match(readyStatus('retry'),/已恢复/);assert.doesNotMatch(readyStatus('retry'),/失败|超时/);});
+test('参考选项顺序保存稳定且覆盖全部选项',()=>{const s=create(),before=s.order.slice();assert.deepEqual([...s.order].sort(),[0,1,2]);editAttempt(s,'SELECT 3');assert.deepEqual(s.order,before);});
